@@ -55,11 +55,15 @@ wordle_regex = re.compile(r"^Wordle (?P<day>\d{1,4}[,.]?\d{0,3}) (?P<result>[Xx1
 # Define the allowed Wordle channel
 WORDLE_CHANNEL_NAME = "CHANNEL_NAME"  # Replace with your specific channel name
 
+# Define server ID
+GUILD_ID = 1234567890 # Replace with your server ID
+
 
 # Define what to do on login
 @bot.event
 async def on_ready():
     print(f"Logged in as {bot.user}")
+    daily_leaderboard_task.start()
 
     data = load_data()
     if not data["users"]:  # If the data file is empty, process message history
@@ -122,7 +126,7 @@ async def on_message(message):
 
 
 # Function to generate the leaderboard message
-def generate_leaderboard_message(ctx=None):
+def generate_leaderboard_message(guild=None):
     data = load_data()
     if not data["users"]:
         return
@@ -176,7 +180,7 @@ def generate_leaderboard_message(ctx=None):
     # Generate leaderboard message
     for rank, (user_id, (total_attempts, games_played)) in enumerate(sorted_leaderboard, start=1):
         average_attempts = total_attempts / days_passed_this_month
-        member = ctx.guild.get_member(int(user_id))
+        member = guild.get_member(int(user_id)) if guild else None
         name = member.display_name if member else f"User ID: {user_id}"
         leaderboard_message += f"{rank}. {name} - {average_attempts:.2f} ({games_played}/{days_passed_this_month})\n"
 
@@ -186,7 +190,8 @@ def generate_leaderboard_message(ctx=None):
 # Define !leaderboard command
 @bot.command()
 async def leaderboard(ctx):
-    leaderboard_message = generate_leaderboard_message(ctx)
+    guild = ctx.guild
+    leaderboard_message = generate_leaderboard_message(guild)
 
     # Initialize Discord message
     now = datetime.now(hawaii_tz)
@@ -257,17 +262,18 @@ async def stats(ctx, member: discord.Member = None):
 
 
 # Daily leaderboard
-@loop(time=time(hour=0, tzinfo=hawaii_tz))
+@loop(time=time(hour=10, minute=0, tzinfo=pytz.UTC))
 async def daily_leaderboard_task():
-    leaderboard_message = generate_leaderboard_message()
+    guild = bot.get_guild(GUILD_ID)
+    leaderboard_message = generate_leaderboard_message(guild)
 
     now = datetime.now(hawaii_tz)
+
     if now.day == 1:
         await post_final_leaderboard()
         return  # Skip sending the daily leaderboard message, use monthly call instead
 
     # Initialize Discord message
-
     embed = discord.Embed(
         title=f"**Daily Wordle Leaderboard for {now.strftime('%B %d, %Y')}**",
         color=discord.Color.blue(),
@@ -282,7 +288,8 @@ async def daily_leaderboard_task():
 
 # Monthly leaderboard
 async def post_final_leaderboard():
-    leaderboard_message = generate_leaderboard_message()
+    guild = bot.get_guild(GUILD_ID)
+    leaderboard_message = generate_leaderboard_message(guild)
 
     data = load_data()
     if not data["users"]:
@@ -304,4 +311,4 @@ async def post_final_leaderboard():
                     await channel.send(embed=embed)  # Send the message to the correct channel
 
 # Run the bot
-bot.run('YOUR_TOKEN')  # Replace with token from dev page
+bot.run('BOT_TOKEN')  # Replace with token from dev page
